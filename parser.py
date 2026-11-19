@@ -203,22 +203,63 @@ def _title_of(s: str, index: int) -> str:
                 c = c.strip(" *：`")
                 if c:
                     return c[:90]
-    # 回退：全文《》 → 反引号 → 首个非空行
+    # 回退 1：【标题】/【Title】方括号标注（小红书常见）
+    for line in lines[:30]:
+        t = line.strip()
+        m = re.match(r"^[【\[]\s*(?:标题|title)\s*[】\]]\s*[:：]?\s*(.+)$", t, re.I)
+        if m:
+            c = m.group(1).strip().strip("*` ")
+            if c:
+                return c[:90]
+    # 回退 2：markdown 标题行（跳过 --- 分隔符和「结构说明型」标题）
+    # 元素开头常是「### 微信公众号长文」「### 一、改写后文案」这类结构说明，
+    # 真正标题在其后一行（如「# 中俄美确立伙伴关系…」），需跳过说明继续找。
+    _STRUCT_META = ("长文", "文案", "适配", "改写", "版本", "标题", "titles", "article",
+                    "结构", "说明", "提示词", "prompt", "图文", "竖版",
+                    "introduction", "logic", "takeaway", "chain", "parallel", "evidence",
+                    "热点引入", "核心逻辑", "观点总结", "正文", "结语", "开头", "结尾", "正文结构")
+    first_struct = None  # 兜底用：第一个被跳过的结构说明标题
+    for line in lines[:30]:
+        t = line.strip()
+        if t in ("---", "***", "___") or not t:
+            continue
+        m = re.match(r"^#{1,6}\s*(.+)$", t)
+        if m:
+            c = m.group(1).strip()
+            bm = _BOOK_TITLE_RE.search(c)
+            if bm:
+                return bm.group(1).strip()
+            c = re.sub(r"[（(][^）)]*[）)]", "", c).strip().strip("*` ")
+            if not c or len(c) <= 3:
+                continue
+            # 结构说明型标题：纯序号开头，或含元词（长文/文案/Titles/Introduction…）
+            is_struct = bool(re.match(r"^[一二三四五六七八九十]+[、.．]", c)) or \
+                any(meta in c.lower() for meta in _STRUCT_META)
+            if is_struct:
+                if first_struct is None:
+                    first_struct = c
+                continue
+            return c[:90]
+    # 回退 2.5：英文「**风格**: *标题*」模式（LinkedIn 3 版本标题）
+    for line in lines[:30]:
+        m = re.match(r"^\d+[\.、]\s*\*\*[^*]+\*\*\s*[:：]\s*\*([^*]+)\*", line.strip())
+        if m:
+            return m.group(1).strip()[:90]
+    # 回退 3：全文《》 → 反引号英文标题
     bm = _BOOK_TITLE_RE.search(s)
     if bm:
         return bm.group(1).strip()
     for b in _BACKTICK_RE.findall(s):
         if not b.lstrip().startswith("#") and len(b) > 6:
             return b.strip()[:90]
+    # 回退 4：首个被跳过的结构说明标题（去 markdown 前缀）
+    if first_struct:
+        return first_struct[:90]
+    # 回退 5：首个非空、非分隔符、非话题标签行
     for line in lines:
-        t = line.strip()
-        if t:
-            m = re.match(r"^#{1,6}\s*(.+)$", t)
-            if m:
-                c = re.sub(r"[（(][^）)]*[）)]", "", m.group(1)).strip()
-                if c:
-                    return c[:90]
-            return t[:90]
+        t = line.strip().lstrip("#").strip()
+        if t and t not in ("---", "***", "___") and not t.startswith("#"):
+            return t.strip("*` ")[:90]
     return f"话题{index}"
 
 

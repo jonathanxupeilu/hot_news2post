@@ -65,7 +65,7 @@ POST /api/runs
 ```
 
 - `_runs`（内存 dict）+ `_lock` 只服务**当前进程**的实时事件；磁盘才是持久化真源。进程重启后事件只能从 `events.jsonl` 读（但 `/events` 接口优先读内存，内存 miss 时回退 `store.get_meta` 的状态，注意此时不会返回历史事件）。
-- 超时上限 600s，定义在 `coze_client.run_workflow_stream` 的 `timeout_s`。
+- 超时上限 1800s，定义在 `coze_client.run_workflow_stream` 的 `timeout_s`（workflow 多平台输出量大；超过同步 API 10 分钟硬上限会网关 504，异步模式需付费版否则报 4026）。
 
 ### 4. Coze 客户端 `coze_client.py`
 
@@ -80,7 +80,8 @@ POST /api/runs
 `parse_output(raw)` → `{"ok", "platforms":[{key,name,count,skipped}], "articles":[{idx,platform,platform_name,topic,draft}], "raw", "error", "skipped", "normalized"}`（`skipped` = 拒答数，写入 `meta.skipped`；`articles.idx` 为跨平台全局序号，store 据此落盘 `articles/NN.md`）。
 
 - **协议（当前主路径）：工作流返回「按平台分组的对象」**——`{"X_output":[...], "gzh_output":[...], "lkdn_output":[...], "wb_output":[...], "xhs_output":[...]}`，每个数组是某平台风格适配的一篇或多篇初稿（整段 markdown 字符串）。这是口径，不要改回单篇对象。平台 key → 显示名见 `PLATFORM_NAMES`，未知 `*_output` key 也照常解析。
-- **组织维度：平台为主**（2026-11-18 确认）。前端按平台 Tab 分类展示，不做跨平台话题对齐——各平台标题高度异质（X 英文反引号 / 公众号《》/ 微博话题标签 / 小红书 emoji），对齐不可靠。每篇用自己的标题，优先级：标题推荐段《》→「标题/主标题：」标注 → 全文《》→ 反引号英文标题 → 首行；无标题回退「话题N」。
+- **组织维度：平台为主**（2026-11-18 确认）。前端按平台 Tab 分类展示，不做跨平台话题对齐——各平台标题高度异质（X 英文反引号 / 公众号《》/ 微博话题标签 / 小红书 emoji），对齐不可靠。每篇用自己的标题，优先级：标题推荐段《》→「标题/主标题：」/【标题】标注 → 同行《》/反引号 → 正文标题行（跳 `---` 与结构说明型标题）→ 英文「**风格**: *标题*」→ 全文《》→ 无标题回退「话题N」。`---` 开头、`【标题】`、`Adapted … Titles` 复合元素是 2026-11-19 二次优化后的真实形态，Golden 已覆盖。
+- **文生图提示词元素保留**（2026-11-19 口径）：workflow 在 `xhs_output` 等平台额外产出「文生图提示词」元素，非拒答，**照常入库、前端一起显示**（用户后续流程再加工），不过滤。
 - **存储/API**：store 按全局 idx 落盘，meta 存 `platforms` 清单 + 每篇 platform 字段；API `/articles` 返回 `{platforms, articles}`，旧 run 自动从 articles 推导平台清单。
 - **拒答过滤**：命中「未涉及金融/无法创作/不符合财经…」且无《标题》的元素**过滤不入库**，按平台与总计记入 skipped。
 - 结构规范化（兜底）：`_normalize_structure` 仅在两个段标题都在、标题在前、中间有 `---` 时交换两段，统一为「初稿在前 → 标题在后」；写入 `meta.normalized`，`raw.txt` 不动。workflow 二次修复后实测已统一（`normalized=0`），兜底保留作安全网。根因在 Coze 侧，根治要在 workflow 固定输出模板。

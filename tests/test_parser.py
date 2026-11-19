@@ -299,3 +299,51 @@ def test_no_title_marker_falls_back_to_first_heading():
     raw = json.dumps({"wb_output": [art]}, ensure_ascii=False)
     r = parse_output(raw)
     assert r["articles"][0]["topic"] == "微博正文"
+
+
+# ---- 2026-11-19 二次优化的真实输出形态（标题提取边界）----
+
+
+def test_title_from_after_separator():
+    # 元素以 --- 开头，真正标题在后面的 markdown 标题行
+    art = ("---\n"
+           "### 微信公众号长文\n"
+           "# 中俄美确立伙伴关系：全球投资的「和平红利」正在释放？\n"
+           "各位关注全球投资的小伙伴们…")
+    raw = json.dumps({"gzh_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "中俄美确立伙伴关系：全球投资的「和平红利」正在释放？"
+
+
+def test_title_from_bracket_label():
+    # 【标题】标注（小红书）
+    art = ("### 改写后的小红书风格商业&投资文案\n"
+           "【标题】中俄美深圳会谈喊\"解决全球问题\"？投资者先盯这2个细节😱\n"
+           "正文：…")
+    raw = json.dumps({"xhs_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "中俄美深圳会谈喊\"解决全球问题\"？投资者先盯这2个细节😱"
+
+
+def test_title_from_style_colon_pattern():
+    # 英文「**风格**: *标题*」模式（LinkedIn 3 版本），跳过正文章节小标题
+    art = ("### Adapted LinkedIn-Friendly Titles (3 Versions, Aligned to LinkedIn's Professional Audience)\n"
+           "1. **Suspense-Driven**: *Shenzhen China-Russia Summit: Will It Break the Dollar's Grip?*\n"
+           "2. **Opinion-Led**: *Shenzhen Summit Signals a New Local Currency Shift*\n"
+           "---\n"
+           "### Full LinkedIn Article\n"
+           "#### Hotspot Introduction (Original: 热点引入)\n"
+           "##### Positive Evidence Chain (USD Bypass Driving Change)\n"
+           "- Post-2014 sanctions…")
+    raw = json.dumps({"lkdn_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "Shenzhen China-Russia Summit: Will It Break the Dollar's Grip?"
+
+
+def test_prompt_element_kept():
+    # 文生图提示词元素照常保留（用户确认后续加工用），不误判为拒答
+    art = "### 适配小红书竖版的文生图提示词\n小红书竖版图文插画，画面主体：深圳平安金融中心…"
+    raw = json.dumps({"xhs_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["ok"] and len(r["articles"]) == 1 and r["skipped"] == 0
+    assert "文生图提示词" in r["articles"][0]["topic"]
