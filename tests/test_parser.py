@@ -294,11 +294,11 @@ def test_title_ignores_balanced_note_containing_title_word():
 
 
 def test_no_title_marker_falls_back_to_first_heading():
-    # 元素没有标题标记时，回退首个非空标题行，不误取正文杂行
+    # 无标题标记时取开篇 hook（不取「微博正文」这类结构说明）
     art = "### 微博正文（含结构对应+短句风格）\n🔥快消圈两大关键信号！\n正文"
     raw = json.dumps({"wb_output": [art]}, ensure_ascii=False)
     r = parse_output(raw)
-    assert r["articles"][0]["topic"] == "微博正文"
+    assert r["articles"][0]["topic"] == "🔥快消圈两大关键信号！"
 
 
 # ---- 2026-11-19 二次优化的真实输出形态（标题提取边界）----
@@ -346,4 +346,32 @@ def test_prompt_element_kept():
     raw = json.dumps({"xhs_output": [art]}, ensure_ascii=False)
     r = parse_output(raw)
     assert r["ok"] and len(r["articles"]) == 1 and r["skipped"] == 0
-    assert "文生图提示词" in r["articles"][0]["topic"]
+    # 标题取提示词正文首行即可；重点是元素被保留（用户后续流程加工用）
+    assert r["articles"][0]["topic"]
+
+
+def test_xhs_title_from_opening_hook_after_struct_note():
+    # 小红书无【标题】标注：结构说明标题后的第一行 hook 才是大标题
+    art1 = ("### 一、改写后小红书风格商业投资文案\n"
+            "家人们！最近中俄美会晤释放的信号，直接戳中全球投资的底层逻辑！\n"
+            "🔹核心逻辑：利益共生的平等合作是关键风向标！")
+    art2 = ("---\n"
+            "### 【改写后小红书风格财经文案】\n"
+            "🤔地缘不再是玄学！中俄美这波操作，直接戳中投资者钱包核心！\n"
+            "最近中俄美表态要搞伙伴关系…\n"
+            "#宏观配置 #地缘与投资")
+    raw = json.dumps({"xhs_output": [art1, art2]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "家人们！最近中俄美会晤释放的信号，直接戳中全球投资的底层逻辑！"
+    assert r["articles"][1]["topic"] == "🤔地缘不再是玄学！中俄美这波操作，直接戳中投资者钱包核心！"
+
+
+def test_gzh_title_after_struct_note_no_regression():
+    # 回归守护：结构说明后跟 markdown 标题时，应取该标题而非正文
+    art = ("---\n"
+           "### 微信公众号长文\n"
+           "# 中俄美确立伙伴关系：全球投资的「和平红利」正在释放？\n"
+           "各位关注全球投资的小伙伴们…")
+    raw = json.dumps({"gzh_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "中俄美确立伙伴关系：全球投资的「和平红利」正在释放？"

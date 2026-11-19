@@ -219,7 +219,8 @@ def _title_of(s: str, index: int) -> str:
                     "introduction", "logic", "takeaway", "chain", "parallel", "evidence",
                     "热点引入", "核心逻辑", "观点总结", "正文", "结语", "开头", "结尾", "正文结构")
     first_struct = None  # 兜底用：第一个被跳过的结构说明标题
-    for line in lines[:30]:
+    for idx2, line in enumerate(lines[:30]):
+        i = idx2  # 修正：本循环的索引，避免复用主循环遗留的 i
         t = line.strip()
         if t in ("---", "***", "___") or not t:
             continue
@@ -238,6 +239,32 @@ def _title_of(s: str, index: int) -> str:
             if is_struct:
                 if first_struct is None:
                     first_struct = c
+                # 结构说明后的标题：优先取 markdown 标题行（如 gzh 的「# 中俄美确立…」），
+                # 否则取第一行实质正文 hook（小红书把标题融进开篇句）
+                for nxt in lines[i + 1:i + 4]:
+                    n = nxt.strip()
+                    if not n or n in ("---", "***", "___"):
+                        continue
+                    # markdown 标题行：去 # 后若是结构说明则跳过，否则就是真标题
+                    mh = re.match(r"^#{1,6}\s*(.+)$", n)
+                    if mh:
+                        hc = re.sub(r"[（(][^）)]*[）)]", "", mh.group(1)).strip().strip("*` ")
+                        if hc and len(hc) > 3 and not any(meta in hc.lower() for meta in _STRUCT_META) \
+                                and not re.match(r"^[一二三四五六七八九十]+[、.．]", hc):
+                            return hc[:90]
+                        continue
+                    if re.match(r"^[【\[]\s*(?:标题|title)", n, re.I):
+                        continue
+                    if re.match(r"^【[^】]*标题[^】]*】", n):
+                        continue
+                    if re.match(r"^#\S+\s+#\S+", n):  # 话题标签行
+                        continue
+                    m_style = re.match(r"^\d+[\.、]\s*\*\*[^*]+\*\*\s*[:：]\s*\*([^*]+)\*", n)
+                    if m_style:
+                        return m_style.group(1).strip()[:90]  # 英文标题模式
+                    if re.match(r"^[✅❌💡🔹📊🤔🔥][^\n]{0,8}[：:]", n):  # 段落小标题
+                        continue
+                    return n[:90]
                 continue
             return c[:90]
     # 回退 2.5：英文「**风格**: *标题*」模式（LinkedIn 3 版本标题）
@@ -252,8 +279,22 @@ def _title_of(s: str, index: int) -> str:
     for b in _BACKTICK_RE.findall(s):
         if not b.lstrip().startswith("#") and len(b) > 6:
             return b.strip()[:90]
-    # 回退 4：首个被跳过的结构说明标题（去 markdown 前缀）
+    # 回退 4：结构说明标题后的第一行 hook 正文（小红书把标题融进开篇句）
     if first_struct:
+        for j, line in enumerate(lines):
+            if first_struct in line:
+                for nxt in lines[j + 1:j + 5]:
+                    n = nxt.strip()
+                    if not n or n in ("---", "***", "___") or n.startswith("#"):
+                        continue
+                    if re.match(r"^【[^】]*标题[^】]*】", n):
+                        continue
+                    if re.match(r"^#\S+\s+#\S+", n):  # 话题标签行
+                        continue
+                    if re.match(r"^[✅❌💡🔹📊🤔🔥][^\n]{0,8}[：:]", n):  # 段落小标题
+                        continue
+                    return n[:90]
+                break
         return first_struct[:90]
     # 回退 5：首个非空、非分隔符、非话题标签行
     for line in lines:
