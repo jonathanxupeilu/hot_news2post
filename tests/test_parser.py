@@ -375,3 +375,32 @@ def test_gzh_title_after_struct_note_no_regression():
     raw = json.dumps({"gzh_output": [art]}, ensure_ascii=False)
     r = parse_output(raw)
     assert r["articles"][0]["topic"] == "中俄美确立伙伴关系：全球投资的「和平红利」正在释放？"
+
+
+# ---- 2026-11-20 重跑暴露的微博标题边界（BC-004）----
+
+
+def test_wb_title_from_single_hashtag_after_fulltext_note():
+    # 「### 微博版全文（...）」为结构说明，真标题是紧随的单话题标签 #...#
+    art = ("### 微博版全文（带话题/短句/互动感）\n"
+           "#入职时间才是职场隐形KPI？#\n"
+           "---\n"
+           "#### 【热点炸了】\n"
+           "某AI初创上市首日，员工期权账户集体跳涨…")
+    raw = json.dumps({"wb_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["ok"] and len(r["articles"]) == 1
+    assert r["articles"][0]["topic"] == "入职时间才是职场隐形KPI？"
+
+
+def test_wb_title_skips_trailing_hashtag_stack():
+    # 微博元素以【真标题】开头、文末跟「#标签1 #标签2」标签堆，不得误取标签堆为标题
+    art = ("【深圳水贝挤爆！黄金置换潮藏着啥信号🔥】\n"
+           "（热点引入）\n"
+           "谁懂啊！工作日黄金市场人满为患😱\n"
+           "…\n"
+           "#深圳水贝 #黄金消费 #投资风向 #财经观察")
+    raw = json.dumps({"wb_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["ok"] and len(r["articles"]) == 1
+    assert r["articles"][0]["topic"] == "【深圳水贝挤爆！黄金置换潮藏着啥信号🔥】"

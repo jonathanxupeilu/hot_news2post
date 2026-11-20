@@ -215,7 +215,7 @@ def _title_of(s: str, index: int) -> str:
     # 元素开头常是「### 微信公众号长文」「### 一、改写后文案」这类结构说明，
     # 真正标题在其后一行（如「# 中俄美确立伙伴关系…」），需跳过说明继续找。
     _STRUCT_META = ("长文", "文案", "适配", "改写", "版本", "标题", "titles", "article",
-                    "结构", "说明", "提示词", "prompt", "图文", "竖版",
+                    "结构", "说明", "提示词", "prompt", "图文", "竖版", "全文",
                     "introduction", "logic", "takeaway", "chain", "parallel", "evidence",
                     "热点引入", "核心逻辑", "观点总结", "正文", "结语", "开头", "结尾", "正文结构")
     first_struct = None  # 兜底用：第一个被跳过的结构说明标题
@@ -223,6 +223,9 @@ def _title_of(s: str, index: int) -> str:
         i = idx2  # 修正：本循环的索引，避免复用主循环遗留的 i
         t = line.strip()
         if t in ("---", "***", "___") or not t:
+            continue
+        # 话题标签行不作 markdown 标题（BC-004：文末「#标签1 #标签2」曾被误取为标题）
+        if t.startswith("#") and (re.match(r"^#\S+\s+#", t) or re.match(r"^#[^#]+#$", t)):
             continue
         m = re.match(r"^#{1,6}\s*(.+)$", t)
         if m:
@@ -245,6 +248,10 @@ def _title_of(s: str, index: int) -> str:
                     n = nxt.strip()
                     if not n or n in ("---", "***", "___"):
                         continue
+                    # 微博单话题标签行 #标题# → 去首尾 # 作为标题（BC-004）
+                    sm = re.match(r"^#([^#]+)#$", n)
+                    if sm and len(sm.group(1).strip()) > 3:
+                        return sm.group(1).strip()[:90]
                     # markdown 标题行：去 # 后若是结构说明则跳过，否则就是真标题
                     mh = re.match(r"^#{1,6}\s*(.+)$", n)
                     if mh:
