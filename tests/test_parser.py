@@ -404,3 +404,41 @@ def test_wb_title_skips_trailing_hashtag_stack():
     r = parse_output(raw)
     assert r["ok"] and len(r["articles"]) == 1
     assert r["articles"][0]["topic"] == "【深圳水贝挤爆！黄金置换潮藏着啥信号🔥】"
+
+
+# ---- 2026-11-20 第二次重跑暴露的标题边界（BC-005）----
+
+
+def test_title_english_title_label_takes_next_line():
+    # X 平台「#### Title (X-style...)」：括号注释去掉后为空，应取下一行真标题
+    art = ("### X (Twitter) Style Article (English, Short Sentences, Social-Fit)\n"
+           "---\n"
+           "#### Title (X-style, eye-catching, with hashtags)\n"
+           "Will Gold Crash Every Time A-Shares Dip? Nov 20 Gold Tanks: Buy the Dip or Run? #Gold\n"
+           "---")
+    raw = json.dumps({"X_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == (
+        "Will Gold Crash Every Time A-Shares Dip? Nov 20 Gold Tanks: Buy the Dip or Run? #Gold")
+
+
+def test_title_struct_note_with_colon_suffix():
+    # 「### 微信公众号长文：真标题」：结构说明行本身带冒号后缀，冒号后即真标题
+    art = ("### 微信公众号长文：中俄美元首会晤：全球财经的平衡术而非颠覆术\n"
+           "（开头引导）\n"
+           "各位财粉注意！刚落幕的会晤背后藏着投资信号…")
+    raw = json.dumps({"gzh_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "中俄美元首会晤：全球财经的平衡术而非颠覆术"
+
+
+def test_title_wb_hashtag_then_hook_text():
+    # 微博「#### 微博标题（...）」后跟「#话题# 标题文字」：取话题标签后的文字
+    art = ("### 微博版文案（短句+强互动+抓眼球）\n"
+           "---\n"
+           "#### 微博标题（自带话题+戳核心）\n"
+           "#特朗普APEC后称访华意义深远# 亚太财经要变？先看信号vs实质！\n"
+           "---")
+    raw = json.dumps({"wb_output": [art]}, ensure_ascii=False)
+    r = parse_output(raw)
+    assert r["articles"][0]["topic"] == "亚太财经要变？先看信号vs实质！"

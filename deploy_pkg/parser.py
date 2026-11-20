@@ -36,9 +36,10 @@ _BOOK_TITLE_RE = re.compile(r"《([^》]{2,80})》")
 # 结构规范化：workflow 偶尔把「标题及推荐理由」排在「文案初稿」之前。
 _TITLE_SECTION_RE = re.compile(r"^#{1,6}\s*.*(?:标题及推荐理由|标题及理由|标题推荐)", re.MULTILINE)
 _DRAFT_SECTION_RE = re.compile(r"^#{1,6}\s*.*文案初稿", re.MULTILINE)
-# 标题行标记：必须是行首的「标题/主标题/推荐英文标题/微博标题」等，
+# 标题行标记：必须是行首的「标题/主标题/推荐英文标题/微博标题/title」等，
 # 不能是括号注释里的「标题+正文」「结构保持：标题→」（真实输出踩过）
-_TITLE_LINE_RE = re.compile(r"^#{0,6}\s*\*{0,2}[\u4e00-\u9fa5A-Za-z]{0,4}(?:主)?标题")
+# 英文 Title 也纳入（X 平台输出「#### Title (X-style...)」）
+_TITLE_LINE_RE = re.compile(r"^#{0,6}\s*\*{0,2}[\u4e00-\u9fa5A-Za-z]{0,4}(?:主)?(?:标题|title(?![A-Za-z]))", re.I)
 _BACKTICK_RE = re.compile(r"`([^`]{6,120})`")
 
 
@@ -197,6 +198,10 @@ def _title_of(s: str, index: int) -> str:
             bt2 = _BACKTICK_RE.search(n)
             if bt2 and not bt2.group(1).lstrip().startswith("#"):
                 return bt2.group(1).strip()[:90]
+            # 微博「#话题# + 标题文字」形态：取话题标签后的文字作标题（BC-005）
+            hm = re.match(r"^#[^#]+#\s*(.+)$", n)
+            if hm and len(hm.group(1).strip()) > 3:
+                return hm.group(1).strip()[:90]
             if not n.startswith("#") and len(n) > 8 and "标题" not in n:
                 c = re.sub(r"^\d+[\.、]\s*", "", n)
                 c = re.sub(r"^【[^】]*】\s*", "", c)
@@ -242,6 +247,11 @@ def _title_of(s: str, index: int) -> str:
             if is_struct:
                 if first_struct is None:
                     first_struct = c
+                # 结构说明行带「：」后缀时，冒号后即真标题（如「### 微信公众号长文：XXX」）
+                # 括号注释内的冒号已在上面被去掉，此处剩的是行本身的冒号
+                colon = re.search(r"[：:]\s*(.+)$", c)
+                if colon and len(colon.group(1).strip()) > 3:
+                    return colon.group(1).strip()[:90]
                 # 结构说明后的标题：优先取 markdown 标题行（如 gzh 的「# 中俄美确立…」），
                 # 否则取第一行实质正文 hook（小红书把标题融进开篇句）
                 for nxt in lines[i + 1:i + 4]:
